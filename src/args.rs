@@ -20,69 +20,41 @@ impl Args {
 
         Ok(args)
     }
-    pub fn get_bool(&self, c: &char) -> Result<bool, String> {
+    pub fn get_bool(&self, c: char) -> Result<bool, String> {
         let entry = self.try_get_entry(c)?;
 
         if let Arg::Bool(value) = entry {
             Ok(*value)
         } else {
-            Err(format!("Provided flag is not of a type bool: {}", c))
+            Err(format!("Provided argument is not of a type boolean: {}", c))
         }
     }
-    pub fn get_int(&self, c: &char) -> Result<i32, String> {
+    pub fn get_int(&self, c: char) -> Result<i32, String> {
         let entry = self.try_get_entry(c)?;
 
         if let Arg::Int(value) = entry {
             Ok(*value)
         } else {
-            Err(format!("Provided flag is not of a type int: {}", c))
+            Err(format!("Provided argument is not of a type integer: {}", c))
         }
     }
-    pub fn get_string(&self, c: &char) -> Result<String, String> {
+    pub fn get_string(&self, c: char) -> Result<String, String> {
         let entry = self.try_get_entry(c)?;
 
         if let Arg::String(value) = entry {
             Ok(value.clone().to_string())
         } else {
-            Err(format!("Provided flag is not of a type bool: {}", c))
+            Err(format!("Provided argument is not of a type string: {}", c))
         }
     }
-    fn try_get_entry(&self, c: &char) -> Result<&Arg, String> {
-        let entry = self.0.get(c);
+    fn try_get_entry(&self, c: char) -> Result<&Arg, String> {
+        let entry = self.0.get(&c);
 
         match entry {
             Some(value) => Ok(value),
-            None => Err(format!("No flag -{} was provided", c)),
+            None => Err(format!("No argument '{}' was provided in schema", c)),
         }
     }
-}
-
-fn parse_args(mut args: Args, args_list: Vec<String>) -> Result<Args, String> {
-    for arg in args_list {
-        let flag = arg.chars().nth(1).unwrap();
-
-        if let Some(arg_type) = args.0.get(&flag) {
-            let flag_value: String = arg.chars().skip(2).collect();
-
-            match arg_type {
-                Arg::Int(_) => {
-                    let parsed_value = flag_value.parse::<i32>().unwrap();
-                    args.0
-                        .entry(flag)
-                        .and_modify(|v| *v = Arg::Int(parsed_value));
-                }
-                Arg::Bool(_) => {
-                    args.0.entry(flag).and_modify(|v| *v = Arg::Bool(true));
-                }
-                Arg::String(_) => {
-                    args.0
-                        .entry(flag)
-                        .and_modify(|v| *v = Arg::String(flag_value));
-                }
-            }
-        }
-    }
-    Ok(args)
 }
 
 fn parse_schema(schema_template: &str) -> Result<Args, String> {
@@ -92,7 +64,7 @@ fn parse_schema(schema_template: &str) -> Result<Args, String> {
     for token in tokens {
         let flag = token.chars().next().unwrap();
         if args.0.contains_key(&flag) {
-            return Err(format!("Duplicate flag {}", flag));
+            return Err(format!("Provided duplicate flag in schema: {}", flag));
         }
 
         // bool arg
@@ -115,10 +87,62 @@ fn parse_schema(schema_template: &str) -> Result<Args, String> {
                 args.0.insert(arg_char, Arg::String("".to_string()));
                 continue;
             }
+
+            // argument didn't match any of supported types
+            return Err(format!("Unsupported schema argument type: {}", token));
         } else {
-            return Err(format!("Wrong flag format: {}", token));
+            return Err(format!("Wrong schema argument format: {}", token));
         }
     }
 
+    Ok(args)
+}
+
+fn parse_args(mut args: Args, args_list: Vec<String>) -> Result<Args, String> {
+    for arg in args_list {
+        let mut chars = arg.chars();
+
+        // argument can't be an empty string so this unwrap is safe
+        let first_char = chars.next().unwrap();
+        if first_char != '-' {
+            return Err(format!("Arguments should start with a '-': {}", arg));
+        }
+
+        let flag = chars.next();
+        if !flag.is_some() {
+            return Err(format!("Invalid argument format: {}", arg));
+        }
+        let flag = flag.unwrap();
+
+        let flag_value: String = chars.collect();
+
+        if let Some(arg) = args.0.get(&flag) {
+            match arg {
+                Arg::Int(_) => match flag_value.parse::<i32>() {
+                    Ok(parsed_value) => {
+                        args.0
+                            .entry(flag)
+                            .and_modify(|v| *v = Arg::Int(parsed_value));
+                    }
+                    Err(_) => {
+                        return Err(format!(
+                            "Provided argument value '{}' is not of a type integer",
+                            flag_value
+                        ));
+                    }
+                },
+                Arg::Bool(_) => {
+                    args.0.entry(flag).and_modify(|v| *v = Arg::Bool(true));
+                }
+                Arg::String(_) => {
+                    args.0
+                        .entry(flag)
+                        .and_modify(|v| *v = Arg::String(flag_value));
+                }
+            }
+        } else {
+            return Err(format!("Argument not found in schema: {}", arg));
+        }
+    }
     Ok(args)
 }
