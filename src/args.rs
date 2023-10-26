@@ -10,12 +10,38 @@ enum Arg {
     String(String),
 }
 
-#[derive(Debug, Default)]
+impl Arg {
+    fn set_value(&mut self, value: String) -> Result<(), String> {
+        match self {
+            Arg::Int(v) => match value.parse::<i32>() {
+                Ok(parsed_value) => {
+                    *v = parsed_value;
+                }
+                Err(_) => {
+                    return Err(format!(
+                        "Provided argument value '{}' is not of a type integer",
+                        value
+                    ));
+                }
+            },
+            Arg::Bool(v) => {
+                *v = true;
+            }
+            Arg::String(v) => {
+                *v = value;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
 pub struct Args(HashMap<char, Arg>);
 
 impl Args {
     pub fn build(schema_template: &str, args_list: Vec<String>) -> Result<Args, String> {
-        let args = parse_schema(schema_template)?;
+        let args = Args(HashMap::new());
+        let args = parse_schema(args, schema_template)?;
         let args = parse_args(args, args_list)?;
 
         Ok(args)
@@ -57,8 +83,7 @@ impl Args {
     }
 }
 
-fn parse_schema(schema_template: &str) -> Result<Args, String> {
-    let mut args = Args::default();
+fn parse_schema(mut args: Args, schema_template: &str) -> Result<Args, String> {
     let tokens = schema_template.split(",").collect::<Vec<&str>>();
 
     for token in tokens {
@@ -116,30 +141,8 @@ fn parse_args(mut args: Args, args_list: Vec<String>) -> Result<Args, String> {
 
         let flag_value: String = chars.collect();
 
-        if let Some(arg) = args.0.get(&flag) {
-            match arg {
-                Arg::Int(_) => match flag_value.parse::<i32>() {
-                    Ok(parsed_value) => {
-                        args.0
-                            .entry(flag)
-                            .and_modify(|v| *v = Arg::Int(parsed_value));
-                    }
-                    Err(_) => {
-                        return Err(format!(
-                            "Provided argument value '{}' is not of a type integer",
-                            flag_value
-                        ));
-                    }
-                },
-                Arg::Bool(_) => {
-                    args.0.entry(flag).and_modify(|v| *v = Arg::Bool(true));
-                }
-                Arg::String(_) => {
-                    args.0
-                        .entry(flag)
-                        .and_modify(|v| *v = Arg::String(flag_value));
-                }
-            }
+        if let Some(arg) = args.0.get_mut(&flag) {
+            arg.set_value(flag_value)?;
         } else {
             return Err(format!("Argument not found in schema: {}", arg));
         }
